@@ -1,4 +1,3 @@
-
 import streamlit as st
 import requests
 import time
@@ -25,16 +24,22 @@ with tab1:
     
     if st.button("Нарисовать!"):
         if image_prompt:
-            with st.spinner("Flux рисует..."):
+            with st.spinner("Magic Hour рисует..."):
                 api_key = st.secrets.get("MAGIC_HOUR_API_KEY", "")
                 if not api_key:
                     st.error("Ошибка: Добавьте MAGIC_HOUR_API_KEY в Secrets!")
                 else:
                     headers = {"Authorization": f"Bearer {api_key}"}
+                    # ИСПРАВЛЕНИЕ: Добавлены обязательные поля image_count и style, выбрана модель
                     payload = {
-                        "prompt": image_prompt,
-                        "model": "flux",
-                        "aspect_ratio": "16:9"
+                        "image_count": 1,
+                        "model": "z-image-turbo", # Быстрая и качественная модель
+                        "aspect_ratio": "16:9",
+                        "resolution": "640px",
+                        "style": {
+                            "prompt": image_prompt,
+                            "tool": "general" # Общий стиль
+                        }
                     }
                     try:
                         response = requests.post("https://api.magichour.ai/v1/ai-image-generator", json=payload, headers=headers)
