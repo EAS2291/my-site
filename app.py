@@ -1,8 +1,10 @@
+
 import streamlit as st
 import requests
 import time
 import base64
 import io
+import random
 from gtts import gTTS
 
 st.set_page_config(page_title="Моя ИИ Студия", page_icon="🎨")
@@ -21,12 +23,16 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # --- ВКЛАДКА 1: КАРТИНКИ ---
 with tab1:
     st.header("Генерация картинок")
+    st.info("💡 Совет: Нейросеть лучше всего понимает английский язык. Например: 'A cute dog dancing in a field of daisies'.")
+    
     image_prompt = st.text_input("Опишите, что вы хотите увидеть:", key="img_prompt")
     if st.button("Нарисовать!"):
         if image_prompt:
             with st.spinner("Нейросеть рисует..."):
                 try:
-                    url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(image_prompt)}"
+                    # Добавляем случайный сид, чтобы картинки не повторялись
+                    random_seed = random.randint(1, 1000000)
+                    url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(image_prompt)}?width=1024&height=1024&seed={random_seed}&model=flux&nologo=true"
                     st.image(url, caption="Ваша картинка готова!")
                 except Exception as e:
                     st.error(f"Произошла ошибка: {e}")
@@ -55,7 +61,8 @@ with tab2:
                     try:
                         response = requests.post("https://apihub.agnes-ai.com/v1/videos", json=payload, headers=headers)
                         if response.status_code == 200:
-                            st.success("Задача создана! Подождите...")
+                            st.success("Задача создана! Видео генерируется... (может занять время)")
+                            # Примечание: для полноценного отображения нужно добавить цикл ожидания, как в 3-й вкладке
                         else:
                             st.error(f"Ошибка API: {response.text}")
                     except Exception as e:
@@ -67,7 +74,7 @@ with tab3:
     st.write("Загрузите картинку, и нейросеть превратит её в видео.")
     
     uploaded_file = st.file_uploader("Выберите картинку (JPG, PNG)...", type=["jpg", "jpeg", "png"])
-    animation_prompt = st.text_input("Опишите движение (например: 'камера медленно приближается, персонаж моргает'):", key="anim_prompt")
+    animation_prompt = st.text_input("Опишите движение (например: 'character blinking and smiling'):", key="anim_prompt")
     
     if st.button("Оживить!"):
         if uploaded_file is None:
@@ -81,7 +88,6 @@ with tab3:
             else:
                 with st.spinner("Оживляем картинку... Это займет около 1-2 минут."):
                     try:
-                        # Превращаем картинку в base64
                         img_bytes = uploaded_file.read()
                         b64_img = base64.b64encode(img_bytes).decode('utf-8')
                         img_uri = f"data:image/jpeg;base64,{b64_img}"
@@ -91,7 +97,7 @@ with tab3:
                             "model": "agnes-video-2.5-flash",
                             "prompt": animation_prompt,
                             "mode": "keyframe",
-                            "first_frame": img_uri, # Передаем картинку как первый кадр
+                            "first_frame": img_uri,
                             "size": "720P",
                             "seconds": "5"
                         }
@@ -102,7 +108,6 @@ with tab3:
                             video_id = response.json().get("video_id")
                             st.success(f"Задача создана! ID: {video_id}")
                             
-                            # Ждем результат
                             status_placeholder = st.empty()
                             video_url = None
                             with st.spinner("Генерируем видео... Пожалуйста, подождите."):
@@ -141,7 +146,6 @@ with tab4:
         else:
             with st.spinner("Генерируем голос..."):
                 try:
-                    # Создаем аудио
                     tts = gTTS(text=tts_text, lang=tts_lang, slow=False)
                     audio_bytes = io.BytesIO()
                     tts.write_to_fp(audio_bytes)
