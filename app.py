@@ -1,4 +1,3 @@
-
 import streamlit as st
 import requests
 import os
@@ -12,7 +11,7 @@ tab1, tab2 = st.tabs(["🖼️ Создать картинку", "🎬 Созд�
 
 with tab1:
     st.header("Генерация картинок")
-    image_prompt = st.text_input("Опишите, что вы хотите увидеть (на английском или русском):", key="img_prompt")
+    image_prompt = st.text_input("Опишите, что вы хотите увидеть:", key="img_prompt")
     
     if st.button("Нарисовать!"):
         if image_prompt:
@@ -27,7 +26,7 @@ with tab1:
 
 with tab2:
     st.header("Генерация видео")
-    video_prompt = st.text_input("Опишите видео (что происходит, какой стиль):", key="vid_prompt")
+    video_prompt = st.text_input("Опишите видео:", key="vid_prompt")
     
     if st.button("Создать видео!"):
         if video_prompt:
@@ -40,7 +39,8 @@ with tab2:
                     headers = {"Authorization": f"Bearer {api_key}"}
                     payload = {
                         "model": "agnes-video-2.5",
-                        "prompt": video_prompt
+                        "prompt": video_prompt,
+                        "mode": "text"  # ← Обязательный параметр
                     }
                     try:
                         response = requests.post("https://apihub.agnes-ai.com/v1/videos", json=payload, headers=headers)
