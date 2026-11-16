@@ -38,7 +38,7 @@ with tab2:
                 else:
                     headers = {"Authorization": f"Bearer {api_key}"}
                     payload = {
-                        "model": "agnes-video-2.0",
+                        "model": "agnes-video-2.5-flash",
                         "prompt": video_prompt,
                         "mode": "text"  # ← Обязательный параметр
                     }
