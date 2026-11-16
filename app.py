@@ -17,6 +17,34 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "🎙️ Озвучка"
 ])
 
+API_BASE = "https://api.magichour.ai"
+
+def get_headers():
+    api_key = st.secrets.get("MAGIC_HOUR_API_KEY", "")
+    return {"Authorization": f"Bearer {api_key}"}
+
+def poll_video(project_id, headers):
+    """Ждет завершения генерации видео и возвращает ссылку"""
+    status_placeholder = st.empty()
+    for attempt in range(40):  # Ждем до ~3-4 минут
+        time.sleep(5)
+        try:
+            res = requests.get(f"{API_BASE}/v1/video-projects/{project_id}", headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                status = data.get("status")
+                if status == "complete":
+                    status_placeholder.success("Видео готово!")
+                    return data.get("download", {}).get("url") or data.get("video_url")
+                elif status == "error":
+                    status_placeholder.error(f"Ошибка генерации: {data.get('error')}")
+                    return None
+                else:
+                    status_placeholder.info(f"Статус: {status} (ожидание...)")
+        except Exception as e:
+            status_placeholder.warning(f"Проверка статуса: {e}")
+    return None
+
 # --- ВКЛАДКА 1: КАРТИНКИ ---
 with tab1:
     st.header("Генерация картинок")
@@ -24,31 +52,30 @@ with tab1:
     
     if st.button("Нарисовать!"):
         if image_prompt:
-            with st.spinner("Magic Hour рисует..."):
-                api_key = st.secrets.get("MAGIC_HOUR_API_KEY", "")
-                if not api_key:
-                    st.error("Ошибка: Добавьте MAGIC_HOUR_API_KEY в Secrets!")
-                else:
-                    headers = {"Authorization": f"Bearer {api_key}"}
-                    # ИСПРАВЛЕНИЕ: Добавлены обязательные поля image_count и style, выбрана модель
+            headers = get_headers()
+            if not headers["Authorization"].endswith("mh_\"") and "mh_" not in headers["Authorization"]:
+                st.error("Ошибка: Ключ Magic Hour не найден в Secrets.")
+            else:
+                with st.spinner("Magic Hour рисует..."):
                     payload = {
                         "image_count": 1,
-                        "model": "z-image-turbo", # Быстрая и качественная модель
+                        "model": "z-image-turbo",
                         "aspect_ratio": "16:9",
                         "resolution": "640px",
                         "style": {
                             "prompt": image_prompt,
-                            "tool": "general" # Общий стиль
+                            "tool": "general"
                         }
                     }
                     try:
-                        response = requests.post("https://api.magichour.ai/v1/ai-image-generator", json=payload, headers=headers)
+                        response = requests.post(f"{API_BASE}/v1/ai-image-generator", json=payload, headers=headers)
                         if response.status_code == 200:
                             res_data = response.json()
+                            # Картинки обычно возвращаются сразу или через короткий polling
                             if res_data.get("status") == "complete":
                                 st.image(res_data.get("image_url"), caption="Готово!")
                             else:
-                                st.info(f"Задача создана! ID: {res_data.get('project_id')}. Подождите...")
+                                st.info(f"Задача создана! ID: {res_data.get('id')}. Подождите...")
                         else:
                             st.error(f"Ошибка API: {response.text}")
                     except Exception as e:
@@ -61,31 +88,34 @@ with tab2:
     
     if st.button("Создать видео!"):
         if video_prompt:
-            with st.spinner("Генерируем..."):
-                api_key = st.secrets.get("MAGIC_HOUR_API_KEY", "")
-                if not api_key:
-                    st.error("Ошибка: Ключ не найден.")
-                else:
-                    headers = {"Authorization": f"Bearer {api_key}"}
-                    payload = {
-                        "style": {"prompt": video_prompt},
-                        "model": "ltx-2.5",
-                        "end_seconds": 5,
-                        "aspect_ratio": "16:9",
-                        "resolution": "480p"
-                    }
-                    try:
-                        response = requests.post("https://api.magichour.ai/v1/text-to-video", json=payload, headers=headers)
-                        if response.status_code == 200:
-                            res_data = response.json()
-                            if res_data.get("status") == "complete":
-                                st.video(res_data.get("video_url"))
+            headers = get_headers()
+            with st.spinner("Отправляем запрос..."):
+                payload = {
+                    "style": {"prompt": video_prompt},
+                    "model": "wan-2.2",       # Бесплатная модель
+                    "end_seconds": 5,
+                    "aspect_ratio": "16:9",
+                    "resolution": "480p"
+                }
+                try:
+                    response = requests.post(f"{API_BASE}/v1/text-to-video", json=payload, headers=headers)
+                    if response.status_code == 200:
+                        res_data = response.json()
+                        project_id = res_data.get("id") or res_data.get("project_id") # Берем id
+                        
+                        if project_id:
+                            st.success(f"Задача создана! ID: {project_id}")
+                            video_url = poll_video(project_id, headers)
+                            if video_url:
+                                st.video(video_url)
                             else:
-                                st.info(f"Задача создана! ID: {res_data.get('project_id')}. Подождите немного.")
+                                st.warning("Видео пока не готово. Попробуйте обновить страницу позже.")
                         else:
-                            st.error(f"Ошибка API: {response.text}")
-                    except Exception as e:
-                        st.error(f"Ошибка: {e}")
+                            st.error(f"Не удалось получить ID проекта. Ответ: {res_data}")
+                    else:
+                        st.error(f"Ошибка API ({response.status_code}): {response.text}")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
 
 # --- ВКЛАДКА 3: ОЖИВЛЕНИЕ КАРТИНКИ ---
 with tab3:
@@ -97,40 +127,42 @@ with tab3:
         if uploaded_file is None:
             st.warning("Загрузите картинку.")
         else:
-            with st.spinner("Оживляем..."):
-                api_key = st.secrets.get("MAGIC_HOUR_API_KEY", "")
-                if not api_key:
-                    st.error("Ошибка: Ключ не найден.")
-                else:
-                    try:
-                        img_bytes = uploaded_file.read()
-                        b64_img = base64.b64encode(img_bytes).decode('utf-8')
-                        img_uri = f"data:image/jpeg;base64,{b64_img}"
-                        
-                        headers = {"Authorization": f"Bearer {api_key}"}
-                        payload = {
-                            "style": {"prompt": animation_prompt},
-                            "model": "ltx-2.5",
-                            "end_seconds": 5,
-                            "resolution": "480p",
-                            "audio": False,
-                            "assets": {
-                                "image_file_path": img_uri
-                            }
+            headers = get_headers()
+            with st.spinner("Загружаем и оживляем..."):
+                try:
+                    img_bytes = uploaded_file.read()
+                    b64_img = base64.b64encode(img_bytes).decode('utf-8')
+                    img_uri = f"data:image/jpeg;base64,{b64_img}"
+                    
+                    payload = {
+                        "style": {"prompt": animation_prompt},
+                        "model": "wan-2.2",
+                        "end_seconds": 5,
+                        "resolution": "480p",
+                        "audio": False,
+                        "assets": {
+                            "image_file_path": img_uri
                         }
-                        
-                        response = requests.post("https://api.magichour.ai/v1/image-to-video", json=payload, headers=headers)
-                        
-                        if response.status_code == 200:
-                            res_data = response.json()
-                            if res_data.get("status") == "complete":
-                                st.video(res_data.get("video_url"))
+                    }
+                    
+                    response = requests.post(f"{API_BASE}/v1/image-to-video", json=payload, headers=headers)
+                    
+                    if response.status_code == 200:
+                        res_data = response.json()
+                        project_id = res_data.get("id") or res_data.get("project_id")
+                        if project_id:
+                            st.success(f"Задача создана! ID: {project_id}")
+                            video_url = poll_video(project_id, headers)
+                            if video_url:
+                                st.video(video_url)
                             else:
-                                st.info(f"Задача создана! ID: {res_data.get('project_id')}. Подождите.")
+                                st.warning("Видео пока не готово.")
                         else:
-                            st.error(f"Ошибка API: {response.text}")
-                    except Exception as e:
-                        st.error(f"Ошибка: {e}")
+                            st.error(f"Не удалось получить ID. Ответ: {res_data}")
+                    else:
+                        st.error(f"Ошибка API ({response.status_code}): {response.text}")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
 
 # --- ВКЛАДКА 4: ОЗВУЧКА ---
 with tab4:
